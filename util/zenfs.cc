@@ -137,6 +137,28 @@ int zenfs_tool_list() {
   return 0;
 }
 
+int zenfs_tool_df() {
+  Status s;
+  ZonedBlockDevice *zbd = zbd_open();
+  if (zbd == nullptr) return 1;
+
+  ZenFS *zenFS;
+  s = zenfs_mount(zbd, &zenFS);
+  if (!s.ok()) {
+    fprintf(stderr, "Failed to mount filesystem, error: %s\n",
+            s.ToString().c_str());
+    return 1;
+  }
+  uint64_t used = zbd->GetUsedSpace();
+  uint64_t free = zbd->GetFreeSpace();
+  uint64_t reclaimable = zbd->GetReclaimableSpace();
+  
+  fprintf(stdout, "Free: %lu MB\nUsed: %lu MB\nReclaimable: %lu MB\nSpace amplification %lu%%\n",
+              free / (1024 * 1024), used / (1024 * 1024), reclaimable / (1024 * 1024),
+              (100 * reclaimable) / used);
+  return 0;
+}
+
 int zenfs_tool_lsuuid() {
   std::map<std::string, std::string>::iterator it;
   std::map<std::string, std::string> zenFileSystems = ListZenFileSystems();
@@ -356,6 +378,8 @@ int main(int argc, char **argv) {
     return ROCKSDB_NAMESPACE::zenfs_tool_list();
   } else if (subcmd == "ls-uuid") {
     return ROCKSDB_NAMESPACE::zenfs_tool_lsuuid();
+  } else if (subcmd == "df") {
+    return ROCKSDB_NAMESPACE::zenfs_tool_df();
   } else if (subcmd == "backup") {
     return ROCKSDB_NAMESPACE::zenfs_tool_backup();
   } else if (subcmd == "restore") {
