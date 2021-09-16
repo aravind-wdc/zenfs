@@ -39,8 +39,7 @@ DEFINE_string(backup_path, "", "Path to backup files");
 namespace ROCKSDB_NAMESPACE {
 
 std::unique_ptr<ZonedBlockDevice> zbd_open(bool readonly, bool exclusive) {
-  std::unique_ptr<ZonedBlockDevice> zbd{
-      new ZonedBlockDevice(FLAGS_zbd, nullptr)};
+  std::unique_ptr<ZonedBlockDevice> zbd{new ZonedBlockDevice(FLAGS_zbd, nullptr)};
   IOStatus open_status = zbd->Open(readonly, exclusive);
 
   if (!open_status.ok()) {
