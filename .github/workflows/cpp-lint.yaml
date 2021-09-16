@@ -16,4 +16,6 @@ jobs:
       uses: jidicula/clang-format-action@v3.4.0
       with:
         clang-format-version: '11'
-        check-path: 'fs' 'util'
+        check-path:
+        - fs
+        - util
