@@ -337,6 +337,8 @@ void ZonedBlockDevice::NotifyIOZoneFull() {
 
 void ZonedBlockDevice::NotifyIOZoneClosed() {
   open_io_zones_--;
+  printf("NotifyIOZoneClosed: open_io_zones_ = %lu\n",
+		      open_io_zones_.load());
   zone_resources_.notify_one();
 }
 
@@ -473,16 +475,38 @@ Zone *ZonedBlockDevice::AllocateZone(Env::WriteLifeTimeHint file_lifetime) {
   unsigned int best_diff = LIFETIME_DIFF_NOT_GOOD;
   int new_zone = 0;
   Status s;
+  unsigned int oi_zones, oe_zones, cl_zones;
+  struct zbd_zone *zone_rep;
+  int ret;
 
   io_zones_mtx.lock();
+  printf("AllocateZone: open_io_zones_ = %lu, active_io_zones_ = %lu, max-nr-open-zones= %u \n",
+		      open_io_zones_.load(), active_io_zones_.load(), max_nr_open_io_zones_);
+  ret = zbd_list_zones(read_f_, 0, (uint64_t)nr_zones_ * zone_sz_, ZBD_RO_IMP_OPEN, &zone_rep, &oi_zones);
+  if (ret)
+    printf("zbd_list_zones imp returned error\n");
+  ret = zbd_list_zones(read_f_, 0, (uint64_t)nr_zones_ * zone_sz_, ZBD_RO_EXP_OPEN, &zone_rep, &oe_zones);
+  if (ret)
+    printf("zbd_list_zones exp returned error\n");
+  ret = zbd_list_zones(read_f_, 0, (uint64_t)nr_zones_ * zone_sz_, ZBD_RO_CLOSED, &zone_rep, &cl_zones);
+  if (ret)
+    printf("zbd_list_zones closed returned error\n");
+
+  printf("On device imp open zones: %u, exp open zones: %u, closed zones: %u \n", oi_zones, oe_zones, cl_zones);
 
   /* Make sure we are below the zone open limit */
   {
     std::unique_lock<std::mutex> lk(zone_resources_mtx_);
-    zone_resources_.wait(lk, [this] {
-      if (open_io_zones_.load() < max_nr_open_io_zones_) return true;
-      return false;
-    });
+    //zone_resources_.wait(lk, [this] {
+    //  if (open_io_zones_.load() < max_nr_open_io_zones_) return true;
+    //  return false;
+    //});
+    while (!(open_io_zones_.load() < max_nr_open_io_zones_)) {
+      zbd_list_zones(read_f_, 0, (uint64_t)nr_zones_ * zone_sz_, ZBD_RO_IMP_OPEN, &zone_rep, &oi_zones);
+      printf("Waiting on zone_resources_mtx_, open_io_zones_ = %lu, on-device-open-zones= %u, max-nr-open-zones= %u \n",
+		      open_io_zones_.load(), oi_zones, max_nr_open_io_zones_);
+      zone_resources_.wait(lk);
+    }
   }
 
   /* Reset any unused zones and finish used zones under capacity treshold*/
@@ -559,6 +583,7 @@ Zone *ZonedBlockDevice::AllocateZone(Env::WriteLifeTimeHint file_lifetime) {
     assert(!allocated_zone->open_for_write_);
     allocated_zone->open_for_write_ = true;
     open_io_zones_++;
+    printf("AllocateZone: Allocated a new zone, open_io_zones_ = %lu\n", open_io_zones_.load());
     Debug(logger_,
           "Allocating zone(new=%d) start: 0x%lx wp: 0x%lx lt: %d file lt: %d\n",
           new_zone, allocated_zone->start_, allocated_zone->wp_,
