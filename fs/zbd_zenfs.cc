@@ -67,7 +67,10 @@ void Zone::CloseWR() {
   const std::lock_guard<std::mutex> lock(zbd_->zone_resources_mtx_);
 
   if (Close().ok()) {
+    printf("Zone::CloseWR: Zone Closed\n");
     zbd_->NotifyIOZoneClosed();
+  } else {
+    printf("Zone::CloseWR: Zone Close failed\n");
   }
 
   if (capacity_ == 0) zbd_->NotifyIOZoneFull();
